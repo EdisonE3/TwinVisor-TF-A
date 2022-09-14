@@ -18,7 +18,7 @@
  * mode. This violates the SMC Calling Convention, but since this
  * convention only coveres API towards Normal World it's something that
  * only concerns the OP-TEE Dispatcher in Trusted Firmware-A and OP-TEE
- * OS at Secure EL1.
+ * OS at Secure EL2.
  */
 
 /*

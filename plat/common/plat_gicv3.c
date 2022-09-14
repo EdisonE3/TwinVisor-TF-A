@@ -144,6 +144,7 @@ uint32_t plat_interrupt_type_to_line(uint32_t type,
 {
 	assert((type == INTR_TYPE_S_EL1) ||
 	       (type == INTR_TYPE_EL3) ||
+	       (type == INTR_TYPE_S_EL2) ||
 	       (type == INTR_TYPE_NS));
 
 	assert(sec_state_is_valid(security_state));
@@ -176,6 +177,12 @@ uint32_t plat_interrupt_type_to_line(uint32_t type,
 		 * NS-EL0/1/2 contexts
 		 */
 		return __builtin_ctz(SCR_FIQ_BIT);
+	case INTR_TYPE_S_EL2:
+		if (security_state == SECURE)
+			return __builtin_ctz(SCR_IRQ_BIT);
+		else
+			return __builtin_ctz(SCR_FIQ_BIT);
+		assert(0);
 	default:
 		panic();
 	}

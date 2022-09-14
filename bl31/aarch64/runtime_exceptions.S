@@ -510,6 +510,13 @@ smc_handler64:
 	ubfx	x15, x0, #FUNCID_TYPE_SHIFT, #FUNCID_TYPE_WIDTH
 	orr	x16, x16, x15, lsl #FUNCID_OEN_WIDTH
 
+	mrs     x9, esr_el3
+	ubfx    x9, x9, #0, #15
+	cmp     x9, #0 // non-zero value measn kvm trap
+	b.eq    load_svc_desc
+	mov     x16, #0x7e // set x16 to 0x7e in order to call s_visor_smc_handler
+load_svc_desc:
+
 	/* Load descriptor index from array of indices */
 	adrp	x14, rt_svc_descs_indices
 	add	x14, x14, :lo12:rt_svc_descs_indices

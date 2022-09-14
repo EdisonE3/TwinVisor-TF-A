@@ -141,6 +141,46 @@
  */
 #define CTX_EL1_SYSREGS_END		CTX_MTE_REGS_END
 
+/*******************************************************************************
+ * S-visor: el2_sysregs_ctx
+ ******************************************************************************/
+#define CTX_EL2_SYSREGS_OFFSET	(CTX_CVE_2018_3639_OFFSET + CTX_CVE_2018_3639_END)
+#define CTX_SPSR_EL2		U(0x0)
+#define CTX_ELR_EL2		    U(0x8)
+#define CTX_SCTLR_EL2		U(0x10)
+#define CTX_ACTLR_EL2		U(0x18)
+#define CTX_VSTTBR_EL2		U(0x20)
+#define CTX_VSTCR_EL2		U(0x28)
+#define CTX_VTTBR_EL2		U(0x30)
+#define CTX_VTCR_EL2		U(0x38)
+#define CTX_SP_EL2		    U(0x40)
+#define CTX_ESR_EL2		    U(0x48)
+#define CTX_TTBR0_EL2		U(0x50)
+#define CTX_TTBR1_EL2		U(0x58)
+#define CTX_MAIR_EL2		U(0x60)
+#define CTX_AMAIR_EL2		U(0x68)
+#define CTX_TCR_EL2		    U(0x70)
+#define CTX_TPIDR_SEL0		U(0x78)
+#define CTX_TPIDR_SEL1		U(0x80)
+#define CTX_TPIDR_EL2		U(0x88)
+#define CTX_PAR_SEL1	   	U(0x90)
+#define CTX_HPFAR_EL2	   	U(0x98)
+#define CTX_FAR_EL2		    U(0xa0)
+#define CTX_AFSR0_EL2		U(0xa8)
+#define CTX_AFSR1_EL2		U(0xb0)
+#define CTX_CONTEXTIDR_EL2	U(0xb8)
+#define CTX_VBAR_EL2		U(0xc0)
+#define CTX_HCR_EL2         U(0xc8)
+#define CTX_CNTHCTL_EL2		U(0xd0)
+#define CTX_CNTHP_CTL_EL2         U(0xd8)
+#define CTX_CNTHP_CVAL_EL2         U(0xe0)
+#define CTX_CNTHP_TVAL_EL2         U(0xe8)
+#define CTX_CNTHV_CTL_EL2         U(0xf0)
+#define CTX_CNTHV_CVAL_EL2         U(0xf8)
+#define CTX_CNTHV_TVAL_EL2         U(0x100)
+#define CTX_EL2_SYSREGS_END U(0x110)
+
+
 /*
  * EL2 register set
  */
@@ -359,6 +399,7 @@ DEFINE_REG_STRUCT(gp_regs, CTX_GPREG_ALL);
 DEFINE_REG_STRUCT(el1_sysregs, CTX_EL1_SYSREGS_ALL);
 
 
+DEFINE_REG_STRUCT(el2_sys_regs, CTX_EL1_SYSREGS_ALL);
 /*
  * AArch64 EL2 system register context structure for preserving the
  * architectural state during world switches.
@@ -421,6 +462,7 @@ typedef struct cpu_context {
 #if CTX_INCLUDE_PAUTH_REGS
 	pauth_t pauth_ctx;
 #endif
+	el2_sys_regs_t el2_sysregs_ctx;
 } cpu_context_t;
 
 /* Macros to access members of the 'cpu_context_t' structure */
@@ -429,6 +471,7 @@ typedef struct cpu_context {
 # define get_fpregs_ctx(h)	(&((cpu_context_t *) h)->fpregs_ctx)
 #endif
 #define get_el1_sysregs_ctx(h)	(&((cpu_context_t *) h)->el1_sysregs_ctx)
+#define get_el2_sysregs_ctx(h)	(&((cpu_context_t *) h)->el2_sysregs_ctx)
 #if CTX_INCLUDE_EL2_REGS
 # define get_el2_sysregs_ctx(h)	(&((cpu_context_t *) h)->el2_sysregs_ctx)
 #endif
@@ -447,6 +490,8 @@ CASSERT(CTX_GPREGS_OFFSET == __builtin_offsetof(cpu_context_t, gpregs_ctx), \
 	assert_core_context_gp_offset_mismatch);
 CASSERT(CTX_EL1_SYSREGS_OFFSET == __builtin_offsetof(cpu_context_t, el1_sysregs_ctx), \
 	assert_core_context_el1_sys_offset_mismatch);
+CASSERT(CTX_EL2_SYSREGS_OFFSET == __builtin_offsetof(cpu_context_t, el2_sysregs_ctx), \
+	assert_core_el2_context_sys_offset_mismatch);
 #if CTX_INCLUDE_EL2_REGS
 CASSERT(CTX_EL2_SYSREGS_OFFSET == __builtin_offsetof(cpu_context_t, el2_sysregs_ctx), \
 	assert_core_context_el2_sys_offset_mismatch);
@@ -506,6 +551,10 @@ CASSERT(CTX_PAUTH_REGS_OFFSET == __builtin_offsetof(cpu_context_t, pauth_ctx), \
 void el1_sysregs_context_save(el1_sysregs_t *regs);
 void el1_sysregs_context_restore(el1_sysregs_t *regs);
 
+void el2_sysregs_context_save(el2_sys_regs_t *regs);
+void el2_sysregs_context_restore(el2_sys_regs_t *regs);
+void el2_sysregs_context_save_host_only(el2_sys_regs_t *regs);
+void el2_sysregs_context_restore_host_only(el2_sys_regs_t *regs);
 #if CTX_INCLUDE_EL2_REGS
 void el2_sysregs_context_save(el2_sysregs_t *regs);
 void el2_sysregs_context_restore(el2_sysregs_t *regs);

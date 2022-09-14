@@ -9,7 +9,7 @@
  * This is the Secure Payload Dispatcher (SPD). The dispatcher is meant to be a
  * plug-in component to the Secure Monitor, registered as a runtime service. The
  * SPD is expected to be a functional extension of the Secure Payload (SP) that
- * executes in Secure EL1. The Secure Monitor will delegate all SMCs targeting
+ * executes in Secure EL2, The Secure Monitor will delegate all SMCs targeting
  * the Trusted OS/Applications range to the dispatcher. The SPD will either
  * handle the request locally or delegate it to the Secure Payload. It is also
  * responsible for initialising and maintaining communication with the SP.
@@ -46,11 +46,27 @@ uint32_t opteed_rw;
 static int32_t opteed_init(void);
 
 /*******************************************************************************
- * This function is the handler registered for S-EL1 interrupts by the
+ * This function retrieves vbar_el2 member of 'cpu_context' pertaining to the
+ * given security state.
+ ******************************************************************************/
+uint64_t cm_get_vbar_el2(uint32_t security_state)
+{
+	cpu_context_t *ctx;
+	el2_sys_regs_t *state;
+
+	ctx = cm_get_context(security_state);
+	assert(ctx != NULL);
+
+	state = get_el2_sysregs_ctx(ctx);
+	return (uint64_t)read_ctx_reg(state, CTX_VBAR_EL2);
+}
+
+/*******************************************************************************
+ * This function is the handler registered for S-EL2 interrupts by the
  * OPTEED. It validates the interrupt and upon success arranges entry into
  * the OPTEE at 'optee_fiq_entry()' for handling the interrupt.
  ******************************************************************************/
-static uint64_t opteed_sel1_interrupt_handler(uint32_t id,
+static uint64_t opteed_sel2_interrupt_handler(uint32_t id,
 					    uint32_t flags,
 					    void *handle,
 					    void *cookie)
@@ -65,7 +81,7 @@ static uint64_t opteed_sel1_interrupt_handler(uint32_t id,
 	assert(handle == cm_get_context(NON_SECURE));
 
 	/* Save the non-secure context before entering the OPTEE */
-	cm_el1_sysregs_context_save(NON_SECURE);
+	cm_el2_sysregs_context_save(NON_SECURE, 0);
 
 	/* Get a reference to this cpu's OPTEE context */
 	linear_id = plat_my_core_pos();
@@ -73,7 +89,7 @@ static uint64_t opteed_sel1_interrupt_handler(uint32_t id,
 	assert(&optee_ctx->cpu_ctx == cm_get_context(SECURE));
 
 	cm_set_elr_el3(SECURE, (uint64_t)&optee_vector_table->fiq_entry);
-	cm_el1_sysregs_context_restore(SECURE);
+	cm_el2_sysregs_context_restore(SECURE, 0);
 	cm_set_next_eret_context(SECURE);
 
 	/*
@@ -169,6 +185,13 @@ static int32_t opteed_init(void)
 
 	cm_init_my_context(optee_entry_point);
 
+	/* write scr_el3 first or acess sel2 reg will raise excpt*/
+	uint32_t scr_el3 = (uint32_t)read_scr();
+	scr_el3 |= SCR_EEL2_BIT;
+	scr_el3 |= SCR_HCE_BIT;
+	scr_el3 &= ~SCR_FIQ_BIT;  //do not trap FIQ to el3
+	scr_el3 &= ~SCR_IRQ_BIT;  //do not trap RIQ to el3
+	write_scr(scr_el3);
 	/*
 	 * Arrange for an entry into OPTEE. It will be returned via
 	 * OPTEE_ENTRY_DONE case
@@ -205,6 +228,89 @@ static uintptr_t opteed_smc_handler(uint32_t smc_fid,
 	/*
 	 * Determine which security state this SMC originated from
 	 */
+	uint32_t smc_imm = 0;
+	uint32_t exit_value = 0;
+	uint32_t is_kvm_trap = 0;
+
+	smc_imm = read_esr_el3() & 0xffff;
+	if (smc_imm != 0) {
+		is_kvm_trap = 1;
+		exit_value = smc_imm - 1;
+	}
+
+	if (is_kvm_trap) {
+		if (is_caller_non_secure(flags)) {
+			assert(handle == cm_get_context(NON_SECURE));
+
+			cm_el2_sysregs_context_save(NON_SECURE, 1);
+
+			assert(&optee_ctx->cpu_ctx == cm_get_context(SECURE));
+
+			switch (smc_imm) {
+				case SMC_IMM_KVM_TO_S_VISOR_TRAP:
+					cm_set_elr_el3(SECURE, (uint64_t)
+							&optee_vector_table->kvm_trap_smc_entry);
+					break;
+				case SMC_IMM_KVM_TO_S_VISOR_SHARED_MEMORY_REGISTER:
+					cm_set_elr_el3(SECURE, (uint64_t)
+							&optee_vector_table->kvm_shared_memory_register_entry);
+					break;
+				case SMC_IMM_KVM_TO_S_VISOR_SHARED_MEMORY_HANDLE:
+					cm_set_elr_el3(SECURE, (uint64_t)
+							&optee_vector_table->kvm_shared_memory_handle_entry);
+					break;
+				default:
+					panic();
+			}
+
+			cm_el2_sysregs_context_restore(SECURE, 1);
+
+			cm_set_next_eret_context(SECURE);
+
+			switch (smc_imm) {
+				case SMC_IMM_KVM_TO_S_VISOR_TRAP:
+					break;
+				case SMC_IMM_KVM_TO_S_VISOR_SHARED_MEMORY_REGISTER:
+					memcpy(get_gpregs_ctx(&optee_ctx->cpu_ctx),
+							get_gpregs_ctx(handle), sizeof(gp_regs_t));
+					break;
+				case SMC_IMM_KVM_TO_S_VISOR_SHARED_MEMORY_HANDLE:
+					break;
+				default:
+					panic();
+			}
+
+			SMC_RET0(&optee_ctx->cpu_ctx);
+		} else {
+
+			/*
+			 * Returning from S_VISOR
+			 */
+
+			cm_el2_sysregs_context_save(SECURE, 1);
+
+			/* Get a reference to the non-secure context */
+			ns_cpu_context = cm_get_context(NON_SECURE);
+			assert(ns_cpu_context);
+
+			/* Restore non-secure state */
+			cm_el2_sysregs_context_restore(NON_SECURE, 1);
+			cm_set_next_eret_context(NON_SECURE);
+			switch (smc_imm) {
+				case SMC_IMM_S_VISOR_TO_KVM_TRAP_SYNC: 
+				case SMC_IMM_S_VISOR_TO_KVM_TRAP_IRQ:
+					//skip the first eight handler
+					cm_set_elr_el3(NON_SECURE, (uint64_t)cm_get_vbar_el2(NON_SECURE) + (8+exit_value) * 0x80);
+					break;
+				case SMC_IMM_S_VISOR_TO_KVM_SHARED_MEMORY:
+					break;
+				default:
+					panic();
+			}
+			SMC_RET0(ns_cpu_context);
+		}
+	}
+
 
 	if (is_caller_non_secure(flags)) {
 		/*
@@ -215,7 +321,7 @@ static uintptr_t opteed_smc_handler(uint32_t smc_fid,
 		 */
 		assert(handle == cm_get_context(NON_SECURE));
 
-		cm_el1_sysregs_context_save(NON_SECURE);
+		cm_el2_sysregs_context_save(NON_SECURE, 0);
 
 		/*
 		 * We are done stashing the non-secure context. Ask the
@@ -226,7 +332,7 @@ static uintptr_t opteed_smc_handler(uint32_t smc_fid,
 		 * Verify if there is a valid context to use, copy the
 		 * operation type and parameters to the secure context
 		 * and jump to the fast smc entry point in the secure
-		 * payload. Entry into S-EL1 will take place upon exit
+		 * payload. Entry into S-EL2 will take place upon exit
 		 * from this function.
 		 */
 		assert(&optee_ctx->cpu_ctx == cm_get_context(SECURE));
@@ -243,7 +349,7 @@ static uintptr_t opteed_smc_handler(uint32_t smc_fid,
 					&optee_vector_table->yield_smc_entry);
 		}
 
-		cm_el1_sysregs_context_restore(SECURE);
+		cm_el2_sysregs_context_restore(SECURE, 0);
 		cm_set_next_eret_context(SECURE);
 
 		write_ctx_reg(get_gpregs_ctx(&optee_ctx->cpu_ctx),
@@ -293,14 +399,14 @@ static uintptr_t opteed_smc_handler(uint32_t smc_fid,
 			psci_register_spd_pm_hook(&opteed_pm);
 
 			/*
-			 * Register an interrupt handler for S-EL1 interrupts
+			 * Register an interrupt handler for S-EL2 interrupts
 			 * when generated during code executing in the
 			 * non-secure state.
 			 */
 			flags = 0;
 			set_interrupt_rm_flag(flags, NON_SECURE);
-			rc = register_interrupt_type_handler(INTR_TYPE_S_EL1,
-						opteed_sel1_interrupt_handler,
+			rc = register_interrupt_type_handler(INTR_TYPE_S_EL2,
+						opteed_sel2_interrupt_handler,
 						flags);
 			if (rc)
 				panic();
@@ -361,20 +467,20 @@ static uintptr_t opteed_smc_handler(uint32_t smc_fid,
 		 * and return to the non-secure state.
 		 */
 		assert(handle == cm_get_context(SECURE));
-		cm_el1_sysregs_context_save(SECURE);
+		cm_el2_sysregs_context_save(SECURE, 0);
 
 		/* Get a reference to the non-secure context */
 		ns_cpu_context = cm_get_context(NON_SECURE);
 		assert(ns_cpu_context);
 
 		/* Restore non-secure state */
-		cm_el1_sysregs_context_restore(NON_SECURE);
+		cm_el2_sysregs_context_restore(NON_SECURE, 0);
 		cm_set_next_eret_context(NON_SECURE);
 
 		SMC_RET4(ns_cpu_context, x1, x2, x3, x4);
 
 	/*
-	 * OPTEE has finished handling a S-EL1 FIQ interrupt. Execution
+	 * OPTEE has finished handling a S-EL2 FIQ interrupt. Execution
 	 * should resume in the normal world.
 	 */
 	case TEESMC_OPTEED_RETURN_FIQ_DONE:
@@ -385,9 +491,9 @@ static uintptr_t opteed_smc_handler(uint32_t smc_fid,
 		/*
 		 * Restore non-secure state. There is no need to save the
 		 * secure system register context since OPTEE was supposed
-		 * to preserve it during S-EL1 interrupt handling.
+		 * to preserve it during S-EL2 interrupt handling.
 		 */
-		cm_el1_sysregs_context_restore(NON_SECURE);
+		cm_el2_sysregs_context_restore(NON_SECURE, 0);
 		cm_set_next_eret_context(NON_SECURE);
 
 		SMC_RET0((uint64_t) ns_cpu_context);

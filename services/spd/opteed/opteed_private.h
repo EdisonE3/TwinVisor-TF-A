@@ -85,11 +85,21 @@
 
 #include <lib/cassert.h>
 
+#define SMC_IMM_KVM_TO_S_VISOR_TRAP 0x1
+#define SMC_IMM_S_VISOR_TO_KVM_TRAP_SYNC 0x1
+#define SMC_IMM_S_VISOR_TO_KVM_TRAP_IRQ 0x2
+#define SMC_IMM_KVM_TO_S_VISOR_SHARED_MEMORY_REGISTER 0x10
+#define SMC_IMM_KVM_TO_S_VISOR_SHARED_MEMORY_HANDLE 0x18
+#define SMC_IMM_S_VISOR_TO_KVM_SHARED_MEMORY 0x10
+
 typedef uint32_t optee_vector_isn_t;
 
 typedef struct optee_vectors {
 	optee_vector_isn_t yield_smc_entry;
 	optee_vector_isn_t fast_smc_entry;
+	optee_vector_isn_t kvm_trap_smc_entry;
+	optee_vector_isn_t kvm_shared_memory_register_entry;
+	optee_vector_isn_t kvm_shared_memory_handle_entry;
 	optee_vector_isn_t cpu_on_entry;
 	optee_vector_isn_t cpu_off_entry;
 	optee_vector_isn_t cpu_resume_entry;

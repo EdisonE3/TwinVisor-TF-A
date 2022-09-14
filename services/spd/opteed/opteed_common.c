@@ -32,7 +32,7 @@ void opteed_init_optee_ep_state(struct entry_point_info *optee_entry_point,
 	assert(pc);
 
 	/* Associate this context with the cpu specified */
-	optee_ctx->mpidr = read_mpidr_el1();
+	optee_ctx->mpidr = read_vmpidr_el2();
 	optee_ctx->state = 0;
 	set_optee_pstate(optee_ctx->state, OPTEE_PSTATE_OFF);
 
@@ -45,7 +45,7 @@ void opteed_init_optee_ep_state(struct entry_point_info *optee_entry_point,
 	SET_PARAM_HEAD(optee_entry_point, PARAM_EP, VERSION_1, ep_attr);
 	optee_entry_point->pc = pc;
 	if (rw == OPTEE_AARCH64)
-		optee_entry_point->spsr = SPSR_64(MODE_EL1, MODE_SP_ELX,
+		optee_entry_point->spsr = SPSR_64(MODE_EL2, MODE_SP_ELX,
 						  DISABLE_ALL_EXCEPTIONS);
 	else
 		optee_entry_point->spsr = SPSR_MODE32(MODE32_svc, SPSR_T_ARM,
@@ -61,7 +61,7 @@ void opteed_init_optee_ep_state(struct entry_point_info *optee_entry_point,
 
 /*******************************************************************************
  * This function takes an OPTEE context pointer and:
- * 1. Applies the S-EL1 system register context from optee_ctx->cpu_ctx.
+ * 1. Applies the S-EL2 system register context from optee_ctx->cpu_ctx.
  * 2. Saves the current C runtime state (callee saved registers) on the stack
  *    frame and saves a reference to this state.
  * 3. Calls el3_exit() so that the EL3 system and general purpose registers
@@ -74,9 +74,9 @@ uint64_t opteed_synchronous_sp_entry(optee_context_t *optee_ctx)
 	assert(optee_ctx != NULL);
 	assert(optee_ctx->c_rt_ctx == 0);
 
-	/* Apply the Secure EL1 system register context and switch to it */
+	/* Apply the Secure EL2 system register context and switch to it */
 	assert(cm_get_context(SECURE) == &optee_ctx->cpu_ctx);
-	cm_el1_sysregs_context_restore(SECURE);
+	cm_el2_sysregs_context_restore(SECURE, 0);
 	cm_set_next_eret_context(SECURE);
 
 	rc = opteed_enter_sp(&optee_ctx->c_rt_ctx);
@@ -90,7 +90,7 @@ uint64_t opteed_synchronous_sp_entry(optee_context_t *optee_ctx)
 
 /*******************************************************************************
  * This function takes an OPTEE context pointer and:
- * 1. Saves the S-EL1 system register context tp optee_ctx->cpu_ctx.
+ * 1. Saves the S-EL2 system register context tp optee_ctx->cpu_ctx.
  * 2. Restores the current C runtime state (callee saved registers) from the
  *    stack frame using the reference to this state saved in opteed_enter_sp().
  * 3. It does not need to save any general purpose or EL3 system register state
@@ -99,9 +99,9 @@ uint64_t opteed_synchronous_sp_entry(optee_context_t *optee_ctx)
 void opteed_synchronous_sp_exit(optee_context_t *optee_ctx, uint64_t ret)
 {
 	assert(optee_ctx != NULL);
-	/* Save the Secure EL1 system register context */
+	/* Save the Secure EL2 system register context */
 	assert(cm_get_context(SECURE) == &optee_ctx->cpu_ctx);
-	cm_el1_sysregs_context_save(SECURE);
+	cm_el2_sysregs_context_save(SECURE, 0);
 
 	assert(optee_ctx->c_rt_ctx != 0);
 	opteed_exit_sp(optee_ctx->c_rt_ctx, ret);

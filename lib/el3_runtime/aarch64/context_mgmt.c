@@ -653,6 +653,54 @@ void cm_el1_sysregs_context_save(uint32_t security_state)
 #endif
 }
 
+void cm_el2_sysregs_context_save(uint32_t security_state, uint32_t is_host_only)
+{
+	cpu_context_t *ctx;
+
+	ctx = cm_get_context(security_state);
+	assert(ctx != NULL);
+
+	if (is_host_only) { 
+		/* only save host context */
+		el2_sysregs_context_save_host_only(get_el2_sysregs_ctx(ctx));
+	} else { 
+		/* save all context related to el2 */
+		el2_sysregs_context_save(get_el2_sysregs_ctx(ctx));
+	}
+
+#if IMAGE_BL31
+	if (security_state == SECURE)
+		PUBLISH_EVENT(cm_exited_secure_world);
+	else
+		PUBLISH_EVENT(cm_exited_normal_world);
+#endif
+	return;
+}
+
+void cm_el2_sysregs_context_restore(uint32_t security_state, uint32_t is_host_only)
+{
+	cpu_context_t *ctx;
+
+	ctx = cm_get_context(security_state);
+	assert(ctx != NULL);
+
+	if (is_host_only) { 
+		/* only save host context */
+		el2_sysregs_context_restore_host_only(get_el2_sysregs_ctx(ctx));
+	} else { 
+		/* save all context related to el2 */
+		el2_sysregs_context_restore(get_el2_sysregs_ctx(ctx));
+	}
+
+#if IMAGE_BL31
+	if (security_state == SECURE)
+		PUBLISH_EVENT(cm_entering_secure_world);
+	else
+		PUBLISH_EVENT(cm_entering_normal_world);
+#endif
+	return;
+}
+
 void cm_el1_sysregs_context_restore(uint32_t security_state)
 {
 	cpu_context_t *ctx;

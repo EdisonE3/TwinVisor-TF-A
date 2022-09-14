@@ -56,7 +56,7 @@ static int32_t opteed_cpu_off_handler(u_register_t unused)
 }
 
 /*******************************************************************************
- * This cpu is being suspended. S-EL1 state must have been saved in the
+ * This cpu is being suspended. S-EL2 state must have been saved in the
  * resident cpu (mpidr format) if it is a UP/UP migratable OPTEE.
  ******************************************************************************/
 static void opteed_cpu_suspend_handler(u_register_t max_off_pwrlvl)
@@ -87,8 +87,8 @@ static void opteed_cpu_suspend_handler(u_register_t max_off_pwrlvl)
 }
 
 /*******************************************************************************
- * This cpu has been turned on. Enter OPTEE to initialise S-EL1 and other bits
- * before passing control back to the Secure Monitor. Entry in S-El1 is done
+ * This cpu has been turned on. Enter OPTEE to initialise S-EL2 and other bits
+ * before passing control back to the Secure Monitor. Entry in S-El2 is done
  * after initialising minimal architectural state that guarantees safe
  * execution.
  ******************************************************************************/
@@ -108,6 +108,15 @@ static void opteed_cpu_on_finish_handler(u_register_t unused)
 
 	/* Initialise this cpu's secure context */
 	cm_init_my_context(&optee_on_entrypoint);
+
+
+	/* write scr_el3 first or acess sel2 reg will raise excpt*/
+	uint32_t scr_el3 = (uint32_t)read_scr();
+	scr_el3 |= SCR_EEL2_BIT;
+	scr_el3 |= SCR_HCE_BIT;
+	scr_el3 &= ~SCR_FIQ_BIT;  //do not trap FIQ to el3
+	scr_el3 &= ~SCR_IRQ_BIT;  //do not trap RIQ to el3
+	write_scr(scr_el3);
 
 	/* Enter OPTEE */
 	rc = opteed_synchronous_sp_entry(optee_ctx);

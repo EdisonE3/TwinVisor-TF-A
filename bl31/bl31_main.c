@@ -153,6 +153,7 @@ void bl31_main(void)
 	 * We are ready to enter the next EL. Prepare entry into the image
 	 * corresponding to the desired security state after the next ERET.
 	 */
+    
 	bl31_prepare_next_image_entry();
 
 	console_flush();

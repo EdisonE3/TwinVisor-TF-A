@@ -16,7 +16,8 @@
 #define INTR_TYPE_S_EL1			U(0)
 #define INTR_TYPE_EL3			U(1)
 #define INTR_TYPE_NS			U(2)
-#define MAX_INTR_TYPES			U(3)
+#define INTR_TYPE_S_EL2 		U(3)
+#define MAX_INTR_TYPES			U(4)
 #define INTR_TYPE_INVAL			MAX_INTR_TYPES
 
 /* Interrupt routing modes */
@@ -41,6 +42,10 @@
 #define INTR_SEL1_VALID_RM0		U(0x2)
 /* Routed to EL3 from NS and Secure */
 #define INTR_SEL1_VALID_RM1		U(0x3)
+/* Routed to EL3 from NS. Taken to S-EL2 from Secure */
+#define INTR_SEL2_VALID_RM0		U(0x2)
+/* Routed to EL3 from NS and Secure */
+#define INTR_SEL2_VALID_RM1		U(0x3)
 /* Routed to EL1/EL2 from NS and to S-EL1 from Secure */
 #define INTR_NS_VALID_RM0		U(0x0)
 /* Routed to EL1/EL2 from NS and to EL3 from Secure */
@@ -97,6 +102,13 @@ static inline int32_t validate_sel1_interrupt_rm(uint32_t x)
 	return -EINVAL;
 }
 
+static inline int32_t validate_sel2_interrupt_rm(uint32_t x)
+{
+	if ((x == INTR_SEL2_VALID_RM0) || (x == INTR_SEL2_VALID_RM1))
+		return 0;
+
+	return -EINVAL;
+}
 static inline int32_t validate_ns_interrupt_rm(uint32_t x)
 {
 	if ((x == INTR_NS_VALID_RM0) || (x == INTR_NS_VALID_RM1))

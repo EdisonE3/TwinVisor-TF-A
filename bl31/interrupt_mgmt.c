@@ -48,6 +48,7 @@ static intr_type_desc_t intr_type_descs[MAX_INTR_TYPES];
 static int32_t validate_interrupt_type(uint32_t type)
 {
 	if ((type == INTR_TYPE_S_EL1) || (type == INTR_TYPE_NS) ||
+	    (type == INTR_TYPE_S_EL2) ||
 	    (type == INTR_TYPE_EL3))
 		return 0;
 
@@ -69,6 +70,9 @@ static int32_t validate_routing_model(uint32_t type, uint32_t flags)
 
 	if (type == INTR_TYPE_EL3)
 		return validate_el3_interrupt_rm(rm_flags);
+
+	if (type == INTR_TYPE_S_EL2)
+		return validate_sel2_interrupt_rm(rm_flags);
 
 	return -EINVAL;
 }
